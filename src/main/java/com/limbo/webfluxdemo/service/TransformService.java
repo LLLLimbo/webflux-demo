@@ -121,18 +121,24 @@ public class TransformService {
         if (bitSet == null) {
             return null;
         }
-        Calendar calendar = CalendarUtil.calendar();
-        calendar.set(queryEntity.getYear(), queryEntity.getMonth(), 0);
-        calendar.setTimeZone(TimeZone.getDefault());
+        Calendar calendar = configCalendar(queryEntity.getYear(),queryEntity.getMonth());
         Date date = calendar.getTime();
         Date beginOfMonth = DateUtil.beginOfMonth(date);
-        for (int i = 0; i < bitSet.size(); i++) {
+        long sitOn=DateUtil.betweenDay(DateUtil.beginOfYear(date),beginOfMonth,false);
+        for (int i = (int) sitOn; i < DateUtil.dayOfMonth(beginOfMonth)+sitOn; i++) {
             JSONObject jsonObject = new JSONObject();
             jsonObject.set(DateUtil.formatDate(beginOfMonth), bitSet.get(i));
             jsonObjects.add(jsonObject);
             beginOfMonth = DateUtil.offsetDay(beginOfMonth, 1);
         }
         return jsonObjects;
+    }
+
+    private Calendar configCalendar(int year,int month){
+        Calendar calendar = CalendarUtil.calendar();
+        calendar.set(year, month, 0);
+        calendar.setTimeZone(TimeZone.getDefault());
+        return calendar;
     }
 
     private BitSet reducing(String bitset) {
