@@ -15,4 +15,7 @@ public interface DimRepo extends CrudRepository<EmptySituationSchemaDim, Long> {
     List<EmptySituationSchemaDim> findAllByHouseCreateTimeAfter(Date time);
 
     List<EmptySituationSchemaDim> findAllByCurStatusIsNot(String status);
+
+    List<EmptySituationSchemaDim> findAllByCurStatusIsNotIn(String...status);
+
 }

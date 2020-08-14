@@ -1,6 +1,7 @@
 package com.limbo.webfluxdemo.controller;
 
 import cn.hutool.json.JSONObject;
+import com.limbo.webfluxdemo.entity.IdleBucket;
 import com.limbo.webfluxdemo.entity.QueryEntity;
 import com.limbo.webfluxdemo.service.TransformService;
 import org.springframework.http.ResponseEntity;
@@ -30,5 +31,10 @@ public class TransController {
     @PostMapping("/query")
     private ResponseEntity<List<JSONObject>> query(@RequestBody QueryEntity queryEntity){
         return ResponseEntity.ok(transformService.querySchema(queryEntity));
+    }
+
+    @PostMapping("/queryByIdleBucket")
+    private ResponseEntity<List<IdleBucket>> queryByIdleBucket(){
+       return ResponseEntity.ok(transformService.generateIdleBucket("UNIT"));
     }
 }

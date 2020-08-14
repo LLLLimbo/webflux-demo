@@ -13,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -40,7 +41,7 @@ public class TransformService {
             List<Lease> leaseList = leaseRepo.findAllByContractIdIn(contractIdSet);
             HashMap<Integer, BitSet> hashMap = null;
             for (Lease lease : leaseList) {
-                hashMap = generateBiSets(hashMap, dim.getHouseCreateTime(), lease.getStartTime(), lease.getActualOutTime());
+                hashMap = generateBiSets(hashMap, dim.getHouseCreateTime(), lease.getStartTime(),  lease.getActualOutTime());
             }
             if (hashMap != null) {
                 hashMap.forEach((key, bitSet) -> persisted.add(new EmptySituationSchemaFact()
@@ -121,11 +122,11 @@ public class TransformService {
         if (bitSet == null) {
             return null;
         }
-        Calendar calendar = configCalendar(queryEntity.getYear(),queryEntity.getMonth());
+        Calendar calendar = configCalendar(queryEntity.getYear(), queryEntity.getMonth());
         Date date = calendar.getTime();
         Date beginOfMonth = DateUtil.beginOfMonth(date);
-        long sitOn=DateUtil.betweenDay(DateUtil.beginOfYear(date),beginOfMonth,false);
-        for (int i = (int) sitOn; i < DateUtil.dayOfMonth(beginOfMonth)+sitOn; i++) {
+        long sitOn = DateUtil.betweenDay(DateUtil.beginOfYear(date), beginOfMonth, false);
+        for (int i = (int) sitOn; i < DateUtil.dayOfMonth(beginOfMonth) + sitOn; i++) {
             JSONObject jsonObject = new JSONObject();
             jsonObject.set(DateUtil.formatDate(beginOfMonth), bitSet.get(i));
             jsonObjects.add(jsonObject);
@@ -134,7 +135,7 @@ public class TransformService {
         return jsonObjects;
     }
 
-    private Calendar configCalendar(int year,int month){
+    private Calendar configCalendar(int year, int month) {
         Calendar calendar = CalendarUtil.calendar();
         calendar.set(year, month, 0);
         calendar.setTimeZone(TimeZone.getDefault());
@@ -151,8 +152,68 @@ public class TransformService {
                 .split(",");
         long[] b = new long[array.length];
         for (int i = 0; i < array.length; i++) {
+            if (StrUtil.isEmpty(array[i])) {
+                continue;
+            }
             b[i] = Long.parseLong(array[i]);
         }
         return BitSet.valueOf(b);
     }
+
+    public List<IdleBucket> generateIdleBucket(String groupBy) {
+        Date end = DateUtil.parseDate("2019-07-31");
+        List<EmptySituationSchemaDim> dimList = dimRepo.findAllByCurStatusIsNotIn("DELETED", "TRANSFORM", "TO_BE_RUN", "FREEZING");
+        List<IdleBucket> idleBuckets = new LinkedList<>();
+        List<String> columns;
+        if (groupBy.equals("UNIT")) {
+            columns = dimList.stream().map(EmptySituationSchemaDim::getUnitName).distinct().collect(Collectors.toList());
+            columns.forEach(s -> {
+                int b1 = 0;
+                int b2 = 0;
+                int b3 = 0;
+                List<EmptySituationSchemaDim> dims = dimList.stream().filter(d -> d.getUnitName() != null && d.getUnitName().equals(s)).collect(Collectors.toList());
+                loop(end, idleBuckets, s, b1, b2, b3, dims);
+            });
+        } else {
+            columns = dimList.stream().map(EmptySituationSchemaDim::getCompanyName).distinct().collect(Collectors.toList());
+            columns.forEach(s -> {
+                int b1 = 0;
+                int b2 = 0;
+                int b3 = 0;
+                List<EmptySituationSchemaDim> dims = dimList.stream().filter(d -> d.getCompanyName() != null && d.getCompanyName().equals(s)).collect(Collectors.toList());
+                loop(end, idleBuckets, s, b1, b2, b3, dims);
+            });
+        }
+
+        return idleBuckets;
+    }
+
+    private void loop(Date end, List<IdleBucket> idleBuckets, String s, int b1, int b2, int b3, List<EmptySituationSchemaDim> dims) {
+        for (EmptySituationSchemaDim dim : dims) {
+            EmptySituationSchemaFact f = factRepo.findByDimIdAndLoggedYear(dim.getPid(), 2020);
+            if (f != null) {
+                BitSet v = reducing(f.getBitset());
+                if (v != null) {
+                    int pos = DateUtil.dayOfYear(end) - 1;
+                    int incr = pos - v.previousSetBit(pos);
+                    if (incr > 0 && incr < 16) {
+                        b1++;
+                    }
+                    if (incr > 30 && incr < 46) {
+                        b2++;
+                    }
+                    if (incr > 45) {
+                        b3++;
+                    }
+                }
+            }
+        }
+        IdleBucket bucket = new IdleBucket();
+        bucket.setName(s);
+        bucket.setBucket1(b1);
+        bucket.setBucket2(b2);
+        bucket.setBucket3(b3);
+        idleBuckets.add(bucket);
+    }
+
 }
