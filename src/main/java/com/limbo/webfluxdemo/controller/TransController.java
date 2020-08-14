@@ -5,10 +5,7 @@ import com.limbo.webfluxdemo.entity.IdleBucket;
 import com.limbo.webfluxdemo.entity.QueryEntity;
 import com.limbo.webfluxdemo.service.TransformService;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
@@ -33,8 +30,8 @@ public class TransController {
         return ResponseEntity.ok(transformService.querySchema(queryEntity));
     }
 
-    @PostMapping("/queryByIdleBucket")
-    private ResponseEntity<List<IdleBucket>> queryByIdleBucket(){
-       return ResponseEntity.ok(transformService.generateIdleBucket("UNIT"));
+    @PostMapping("/queryByIdleBucket/{groupBy}/{persist}")
+    private ResponseEntity<List<IdleBucket>> queryByIdleBucket(@PathVariable("groupBy") String groupBy,@PathVariable("persist") Boolean persist){
+       return ResponseEntity.ok(transformService.generateIdleBucket(groupBy,persist));
     }
 }

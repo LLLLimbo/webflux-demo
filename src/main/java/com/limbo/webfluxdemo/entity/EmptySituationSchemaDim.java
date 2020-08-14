@@ -43,4 +43,7 @@ public class EmptySituationSchemaDim {
 
     @Column(name = "house_create_time")
     private Date houseCreateTime;
+
+    @Column(name = "count_number")
+    private Integer countNumber;
 }

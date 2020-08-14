@@ -5,12 +5,10 @@ import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONObject;
 import com.limbo.webfluxdemo.entity.*;
-import com.limbo.webfluxdemo.repository.ContractRepo;
-import com.limbo.webfluxdemo.repository.DimRepo;
-import com.limbo.webfluxdemo.repository.FactRepo;
-import com.limbo.webfluxdemo.repository.LeaseRepo;
+import com.limbo.webfluxdemo.repository.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Mono;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -23,12 +21,14 @@ public class TransformService {
     private final LeaseRepo leaseRepo;
     private final DimRepo dimRepo;
     private final FactRepo factRepo;
+    private final IdleBucketRepo idleBucketRepo;
 
-    public TransformService(ContractRepo contractRepo, LeaseRepo leaseRepo, DimRepo dimRepo, FactRepo factRepo) {
+    public TransformService(ContractRepo contractRepo, LeaseRepo leaseRepo, DimRepo dimRepo, FactRepo factRepo, IdleBucketRepo idleBucketRepo) {
         this.contractRepo = contractRepo;
         this.leaseRepo = leaseRepo;
         this.dimRepo = dimRepo;
         this.factRepo = factRepo;
+        this.idleBucketRepo = idleBucketRepo;
     }
 
     public void trans() {
@@ -41,7 +41,7 @@ public class TransformService {
             List<Lease> leaseList = leaseRepo.findAllByContractIdIn(contractIdSet);
             HashMap<Integer, BitSet> hashMap = null;
             for (Lease lease : leaseList) {
-                hashMap = generateBiSets(hashMap, dim.getHouseCreateTime(), lease.getStartTime(),  lease.getActualOutTime());
+                hashMap = generateBiSets(hashMap, dim.getHouseCreateTime(), lease.getStartTime(), lease.getActualOutTime());
             }
             if (hashMap != null) {
                 hashMap.forEach((key, bitSet) -> persisted.add(new EmptySituationSchemaFact()
@@ -160,7 +160,7 @@ public class TransformService {
         return BitSet.valueOf(b);
     }
 
-    public List<IdleBucket> generateIdleBucket(String groupBy) {
+    public List<IdleBucket> generateIdleBucket(String groupBy, Boolean persist) {
         Date end = DateUtil.parseDate("2019-07-31");
         List<EmptySituationSchemaDim> dimList = dimRepo.findAllByCurStatusIsNotIn("DELETED", "TRANSFORM", "TO_BE_RUN", "FREEZING");
         List<IdleBucket> idleBuckets = new LinkedList<>();
@@ -172,7 +172,7 @@ public class TransformService {
                 int b2 = 0;
                 int b3 = 0;
                 List<EmptySituationSchemaDim> dims = dimList.stream().filter(d -> d.getUnitName() != null && d.getUnitName().equals(s)).collect(Collectors.toList());
-                loop(end, idleBuckets, s, b1, b2, b3, dims);
+                loop(end, idleBuckets, s, b1, b2, b3, dims, groupBy);
             });
         } else {
             columns = dimList.stream().map(EmptySituationSchemaDim::getCompanyName).distinct().collect(Collectors.toList());
@@ -181,14 +181,16 @@ public class TransformService {
                 int b2 = 0;
                 int b3 = 0;
                 List<EmptySituationSchemaDim> dims = dimList.stream().filter(d -> d.getCompanyName() != null && d.getCompanyName().equals(s)).collect(Collectors.toList());
-                loop(end, idleBuckets, s, b1, b2, b3, dims);
+                loop(end, idleBuckets, s, b1, b2, b3, dims, groupBy);
             });
         }
-
+        if (persist) {
+            Mono.just(idleBuckets).subscribe(idleBucketRepo::saveAll);
+        }
         return idleBuckets;
     }
 
-    private void loop(Date end, List<IdleBucket> idleBuckets, String s, int b1, int b2, int b3, List<EmptySituationSchemaDim> dims) {
+    private void loop(Date end, List<IdleBucket> idleBuckets, String s, int b1, int b2, int b3, List<EmptySituationSchemaDim> dims, String groupBy) {
         for (EmptySituationSchemaDim dim : dims) {
             EmptySituationSchemaFact f = factRepo.findByDimIdAndLoggedYear(dim.getPid(), 2020);
             if (f != null) {
@@ -197,13 +199,13 @@ public class TransformService {
                     int pos = DateUtil.dayOfYear(end) - 1;
                     int incr = pos - v.previousSetBit(pos);
                     if (incr > 0 && incr < 16) {
-                        b1++;
+                        b1+=dim.getCountNumber();
                     }
                     if (incr > 30 && incr < 46) {
-                        b2++;
+                        b2+=dim.getCountNumber();
                     }
                     if (incr > 45) {
-                        b3++;
+                        b3+=dim.getCountNumber();
                     }
                 }
             }
@@ -213,6 +215,7 @@ public class TransformService {
         bucket.setBucket1(b1);
         bucket.setBucket2(b2);
         bucket.setBucket3(b3);
+        bucket.setGroup(groupBy);
         idleBuckets.add(bucket);
     }
 
